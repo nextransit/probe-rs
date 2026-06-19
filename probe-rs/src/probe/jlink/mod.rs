@@ -194,6 +194,7 @@ impl ProbeFactory for JLinkFactory {
             swd_settings: SwdSettings::default(),
             probe_statistics: ProbeStatistics::default(),
             jtag_state: JtagDriverState::default(),
+            force_legacy_jtag_command: selector.product_id == 0x0101,
 
             jtag_tms_bits: vec![],
             jtag_tdi_bits: vec![],
@@ -388,6 +389,7 @@ pub struct JLink {
     jtag_capture_tdo: Vec<bool>,
     jtag_response: BitVec,
     jtag_state: JtagDriverState,
+    force_legacy_jtag_command: bool,
 
     /// max number of bits in a transfer chunk, when using JTAG
     jtag_chunk_size: usize,
@@ -716,7 +718,10 @@ impl JLink {
         // version 5 and above, which adds the 3rd command. Unfortunately we cannot reliably use the
         // HW version to determine this since some embedded J-Link probes have a HW version of
         // 1.0.0, but still support SWD, so we use the `SELECT_IF` capability instead.
-        let cmd = if self.caps.contains(Capability::SelectIf) {
+        // J-Link ARM Lite V8 (USB PID 0x0101) reports SELECT_IF, but returns an
+        // all-low TDO stream for HW_JTAG3 on macOS. HW_JTAG2 scans the same target
+        // chain correctly, matching SEGGER J-Link Commander/GDB Server.
+        let cmd = if self.caps.contains(Capability::SelectIf) && !self.force_legacy_jtag_command {
             // Use the new JTAG3 command, make sure to select the JTAG interface mode
             has_status_byte = true;
             Command::HwJtag3
